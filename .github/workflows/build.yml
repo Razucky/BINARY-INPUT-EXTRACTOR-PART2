@@ -5,6 +5,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
@@ -12,13 +15,13 @@ jobs:
         include:
           - os: windows-latest
             name: Windows
-            artifact: BinaryInputExtractor.exe
+            extension: .exe
           - os: macos-latest
             name: macOS
-            artifact: BinaryInputExtractor
+            extension: ""
           - os: ubuntu-latest
             name: Linux
-            artifact: BinaryInputExtractor
+            extension: ""
 
     runs-on: ${{ matrix.os }}
     
@@ -39,34 +42,58 @@ jobs:
       run: |
         pyinstaller --onefile --windowed --name BinaryInputExtractor binary_input_gui.py
     
+    - name: Rename artifact for clarity
+      shell: bash
+      run: |
+        cd dist
+        if [ "${{ matrix.name }}" = "Windows" ]; then
+          mv BinaryInputExtractor.exe BinaryInputExtractor-Windows.exe
+        elif [ "${{ matrix.name }}" = "macOS" ]; then
+          mv BinaryInputExtractor BinaryInputExtractor-macOS
+        else
+          mv BinaryInputExtractor BinaryInputExtractor-Linux
+        fi
+    
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: BinaryInputExtractor-${{ matrix.name }}
-        path: dist/${{ matrix.artifact }}
+        path: dist/BinaryInputExtractor-${{ matrix.name }}${{ matrix.extension }}
         retention-days: 90
 
   release:
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
     
     steps:
-    - name: Download all artifacts
+    - name: Download Windows artifact
       uses: actions/download-artifact@v4
       with:
-        path: artifacts
+        name: BinaryInputExtractor-Windows
+        path: release-files
+    
+    - name: Download macOS artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: BinaryInputExtractor-macOS
+        path: release-files
+    
+    - name: Download Linux artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: BinaryInputExtractor-Linux
+        path: release-files
+    
+    - name: List files for debugging
+      run: |
+        echo "Contents of release-files:"
+        ls -la release-files/
     
     - name: Create Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         tag_name: v1.0.${{ github.run_number }}
         name: Release v1.0.${{ github.run_number }}
-        files: |
-          artifacts/BinaryInputExtractor-Windows/BinaryInputExtractor.exe
-          artifacts/BinaryInputExtractor-macOS/BinaryInputExtractor
-          artifacts/BinaryInputExtractor-Linux/BinaryInputExtractor
+        files: release-files/*
         draft: false
         prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
